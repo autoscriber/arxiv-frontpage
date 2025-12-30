@@ -72,12 +72,18 @@ def main():
     most_recent = list(sorted(DOWNLOADS_FOLDER.glob("*.jsonl")))[-1]
     old_articles_dict = {article["title"]: article for article in srsly.read_jsonl(most_recent)}
 
+    # Find the new and old articles
     new_articles = [article for title, article in articles_dict.items() if title not in old_articles_dict.keys()]
+    # Find the old articles
     old_articles = [article for title, article in articles_dict.items() if title in old_articles_dict.keys()]
+
+    # Log the number of old and new articles
     if old_articles:
         console.log(f"Found {len(old_articles)} old articles in current batch. Skipping.")
+        
+    # If there are new articles, write them to the downloads folder
     if new_articles:
         console.log(f"Found {len(new_articles)} new articles in current batch to write.")
-        filename = str(dt.datetime.now()).replace(" ", "-")[:13] + "h.jsonl"
-        srsly.write_jsonl(Path("data") / "downloads" / filename, new_articles)
-        console.log(f"Wrote {len(new_articles)} articles into {filename}.")
+        filename = str(dt.datetime.now()).replace(" ", "-")[:13] + "h.jsonl" # Format the filename
+        srsly.write_jsonl(DOWNLOADS_FOLDER / filename, new_articles) # Write the new articles to the downloads folder
+        console.log(f"Wrote {len(new_articles)} articles into {filename}.") # Log the number of new articles written
