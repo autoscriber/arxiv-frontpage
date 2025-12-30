@@ -14,6 +14,7 @@ from rich.console import Console
 
 console = Console()
 
+from .constants import DOWNLOADS_FOLDER
 
 def age_in_days(res: Result) -> float:
     """Get total seconds from now from Arxiv result"""
@@ -37,8 +38,15 @@ def parse(res: Result, nlp: Language) -> ArxivArticle:
 
 @retry(tries=5, delay=1, backoff=2)
 def main():
+    # arXiv now redirects API traffic to HTTPS, which the client class does not
+    # follow. Override the endpoint to avoid HTTP 301 errors.
+    arxiv.Client.query_url_format = "https://export.arxiv.org/api/query?{}"
+
     nlp = spacy.load("en_core_web_sm", disable=["ner", "lemmatizer", "tagger"])
     console.log(f"Starting arxiv search.")
+    # Use the common token "and" because it appears in most papers; combined
+    # with SubmittedDate sorting this fetches the latest ~200 papers, which we
+    # then filter locally to recent CS items.
     items = arxiv.Search(
         query="and",
         max_results=200,
@@ -53,16 +61,19 @@ def main():
                 for r in tqdm.tqdm(results) 
                 if age_in_days(r) < 2.5 and r.primary_category.startswith("cs")]
 
+    # Calculate the age of the articles in days just for logging purposes
     dist = [age_in_days(r) for r in results]
     if dist:
         console.log(f"Minimum article age: {min(dist)}")
         console.log(f"Maximum article age: {max(dist)}")
-    articles_dict = {ex['title']: ex for ex in articles}
-    most_recent = list(sorted(Path("data/downloads/").glob("*.jsonl")))[-1]
-    old_articles_dict = {ex['title']: ex for ex in srsly.read_jsonl(most_recent)}
 
-    new_articles = [ex for title, ex in articles_dict.items() if title not in old_articles_dict.keys()]
-    old_articles = [ex for title, ex in articles_dict.items() if title in old_articles_dict.keys()]
+    # Convert the articles to a dictionary for faster lookup
+    articles_dict = {article["title"]: article for article in articles}
+    most_recent = list(sorted(DOWNLOADS_FOLDER.glob("*.jsonl")))[-1]
+    old_articles_dict = {article["title"]: article for article in srsly.read_jsonl(most_recent)}
+
+    new_articles = [article for title, article in articles_dict.items() if title not in old_articles_dict.keys()]
+    old_articles = [article for title, article in articles_dict.items() if title in old_articles_dict.keys()]
     if old_articles:
         console.log(f"Found {len(old_articles)} old articles in current batch. Skipping.")
     if new_articles:
