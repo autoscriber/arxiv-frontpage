@@ -2,51 +2,21 @@ from typing import Dict, List
 import random
 import json
 import itertools as it
-from pathlib import Path 
-from functools import cached_property
+from pathlib import Path
 
 import srsly
-from wasabi import Printer
 from lazylines import LazyLines
 from lunr import lunr
 from lunr.index import Index
 
-from .constants import DATA_LEVELS, INDICES_FOLDER, LABELS, CONFIG, THRESHOLDS, CLEAN_DOWNLOADS_FOLDER, DOWNLOADS_FOLDER, ANNOT_PATH, ACTIVE_LEARN_PATH, SECOND_OPINION_PATH, ANNOT_FOLDER
+from .constants import DATA_LEVELS, INDICES_FOLDER, LABELS, CONFIG, THRESHOLDS, CLEAN_DOWNLOADS_FOLDER, DOWNLOADS_FOLDER, ANNOT_FOLDER
 from .modelling import SentenceModel
-from .utils import console, dedup_stream, add_rownum, attach_docs, attach_spans, add_predictions, abstract_annot_to_sent
-import warnings
-from tqdm import TqdmExperimentalWarning
-
-warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
-
-msg = Printer()
+from .utils import console, dedup_stream, add_rownum, add_predictions
 
 
 class DataStream:
     def __init__(self) -> None:
         pass
-
-    @cached_property
-    def db(self):
-        from prodigy.components.db import connect
-        
-        db = connect()
-        return db
-
-    @cached_property
-    def nlp(self):
-        import spacy
-        return spacy.load("en_core_web_sm", disable=["ner", "lemmatizer", "tagger"])
-    
-    def get_dataset_name(self, label:str, level:str):
-        """Source of truth as far as dataset name goes."""
-        return f"{label}-{level}"
-    
-    def retreive_dataset_names(self):
-        """Retreive the dataset names that actually have annotated data."""
-        product = it.product(LABELS, DATA_LEVELS)
-        possible = [self.get_dataset_name(lab, lev) for lab,lev in product]
-        return [n for n in possible if n in self.db.datasets]
     
     def get_raw_download_stream(self):
         # Fetch all downloaded files, make sure most recent ones come first
@@ -112,31 +82,6 @@ class DataStream:
                 .mutate(cats = lambda d: {k: v for ex in d['subset'] for k, v in ex.items()})
                 .drop("subset")
                 .collect())
-
-    def save_train_stream(self):
-        console.log("Generating annotation stream")
-        stream = []
-        for dataset in self.retreive_dataset_names():
-            datapoints = self.db.get_dataset_examples(dataset)
-            if "sentence" in dataset:
-                new = list(self._sentence_data_to_train_format(datapoints))
-                console.log(f"Adding {len(new)} examples from {dataset}")
-                stream.extend(new)
-            if "abstract" in dataset:
-                label_name = dataset.replace("-abstract", "")
-                new = list(abstract_annot_to_sent(datapoints, self.nlp, label_name))
-                console.log(f"Adding {len(new)} examples from {dataset}")
-                stream.extend(new)
-                
-        if not ANNOT_PATH.parent.exists():
-            ANNOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        
-        full_stream = self._accumulate_train_stream(stream)
-        for label in LABELS:
-            subset = [ex for ex in full_stream if label in ex['cats']]
-            path = ANNOT_FOLDER / f"{label}.jsonl"
-            srsly.write_jsonl(path, subset)
-            console.log(f"Full annotations file saved at [bold]{path}[/bold]")
     
     def get_train_stream(self) -> List[Dict]:
         examples = []
@@ -166,70 +111,6 @@ class DataStream:
             example["meta"] = {"distance": float(score)}
             yield example
     
-    def build_active_learn_stream(self, n=5000):
-        console.log("Preparing active learning stream.")
-        model = SentenceModel.from_disk()
-        stream = self.get_download_stream(level="sentence")
-        
-        def add_preds(stream):
-            for ex in stream:
-                ex['cats'] = model(ex['text'])
-                yield ex
-
-        out = LazyLines(stream).head(n).progress().pipe(add_preds).collect()
-        
-        srsly.write_jsonl(ACTIVE_LEARN_PATH, out)
-        console.log(f"Active learning stream saved in {ACTIVE_LEARN_PATH}.")
-
-
-    def get_active_learn_stream(self, label, preference):
-        from prodigy import set_hashes
-
-        if not ACTIVE_LEARN_PATH.exists():
-            self.build_active_learn_stream()
-            
-        stream = srsly.read_jsonl(ACTIVE_LEARN_PATH)
-    
-        def make_scored_stream(stream):
-            for ex in stream: 
-                ex = set_hashes(ex)
-                score = ex['cats'][label]
-                ex['meta']['score'] = score
-                yield score, ex 
-            
-        scored_stream = make_scored_stream(stream)
-        if preference == "uncertainty":
-            return (ex for s, ex in scored_stream if s < 0.6 and s > 0.4)
-        if preference == "positive class":
-            return (ex for s, ex in scored_stream if s > 0.6)
-        if preference == "negative class":
-            return (ex for s, ex in scored_stream if s < 0.4)
-
-    def build_second_opinion_stream(self, n=2000):
-        console.log("Preparing second opinion stream.")
-        model = SentenceModel.from_disk()
-
-        stream = self.get_download_stream(level="abstract")
-        stream = ({'abstract': ex['text'], **ex} for ex in stream)
-
-        out = LazyLines(stream).head(n).progress().pipe(add_predictions, model=model).collect()
-        
-        srsly.write_jsonl(SECOND_OPINION_PATH, out)
-        console.log(f"Predictions saved in {SECOND_OPINION_PATH}.")
-
-    def get_second_opinion_stream(self, label, min_sents=1, max_sents=5):
-        from prodigy.components.preprocess import add_tokens
-        
-        if not SECOND_OPINION_PATH.exists():
-            self.build_second_opinion_stream()
-        
-        stream = srsly.read_jsonl(SECOND_OPINION_PATH)
-        console.log("Local disk state loaded")
-        stream = (ex for ex in stream if max([p[label] for p in ex["preds"]]) > 0.6)
-        stream = attach_docs(stream, self.nlp, label=label)
-        stream = attach_spans(stream, label, min_spans=min_sents, max_spans=max_sents)
-        return add_tokens(self.nlp, stream)
-
     def get_random_stream(self, level:str):
         return (ex for ex in self.get_download_stream(level=level) if random.random() < 0.05)
 
@@ -271,25 +152,6 @@ class DataStream:
             self.create_simsity_index(level=level)
             self.create_lunr_index(level=level)
 
-    def show_annot_stats(self):
-        """Show the annotation statistics."""
-        for level in DATA_LEVELS:
-            data = {}
-            for label in LABELS:
-                dataset_name = f"{label}-{level}"
-                if dataset_name in self.db.datasets:
-                    examples = self.db.get_dataset_examples(dataset_name)
-                    data[dataset_name] = [
-                        dataset_name,
-                        sum(1 for ex in examples if ex['answer'] == 'accept'),
-                        sum(1 for ex in examples if ex['answer'] == 'ignore'),
-                        sum(1 for ex in examples if ex['answer'] == 'reject')
-                    ]
-            msg.table(data.values(), 
-                    header=["label", "accept", "ignore", "reject"], 
-                    divider=True, 
-                    aligns="r,r,r,r".split(","))
-    
     def get_site_stream(self):
         model = SentenceModel.from_disk()
 

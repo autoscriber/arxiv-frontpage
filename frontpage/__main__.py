@@ -36,57 +36,6 @@ def preprocess_cli():
     DataStream().save_clean_download_stream()
 
 
-@cli.command("annotate")
-def annotate():
-    """Annotate new examples."""
-    def run_questions():
-        import questionary
-        from .constants import LABELS, DATA_LEVELS
-        results = {}
-        results["label"] = questionary.select(
-            "Which label do you want to annotate?",
-            choices=LABELS,
-        ).ask()
-
-        results["level"] = questionary.select(
-            "What view of the data do you want to take?",
-            choices=DATA_LEVELS,
-        ).ask()
-
-        if results["level"] == "abstract":
-            choices = ["second-opinion", "search-engine", "simsity", "random"]
-        else:
-            choices = ["simsity", "search-engine", "active-learning", "random"]
-
-        results["tactic"] = questionary.select(
-            "Which tactic do you want to apply?",
-            choices=choices,
-        ).ask()
-
-        results['setting'] = ''
-        if results["tactic"] in ["simsity", "search-engine"]:
-            results["setting"] = questionary.text(
-                "What query would you like to use?", ""
-            ).ask()
-
-        if results["tactic"] == "active-learning":
-            results["setting"] = questionary.select(
-                "What should the active learning method prefer?",
-                choices=["positive class", "uncertainty", "negative class"],
-            ).ask()
-        return results 
-    
-    results = run_questions()
-    from .recipe import annotate_prodigy
-    annotate_prodigy(results)
-
-@cli.command("annotprep")
-def annotprep():
-    """Prepares data for training."""
-    from .datastream import DataStream
-    DataStream().save_train_stream()
-
-
 @cli.command("train")
 def train():
     """Trains a new model on the data."""
@@ -103,13 +52,6 @@ def pretrain():
     from .modelling import SentenceModel
     examples = DataStream().get_train_stream()
     SentenceModel().pretrain(examples=examples)
-
-
-@cli.command("stats")
-def stats():
-    """Show annotation stats"""
-    from .datastream import DataStream
-    DataStream().show_annot_stats()
 
 
 @cli.command(

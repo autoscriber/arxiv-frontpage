@@ -34,31 +34,6 @@ tasks:
       - python -c "from frontpage.datastream import DataStream; DataStream().save_clean_download_stream()"
     sources:
       - data/downloads/*.jsonl
-
-  build-learned-streams:
-    desc: Generates files for the active-learn-y annotation recipes.
-    cmds:
-      - python -c "from frontpage.datastream import DataStream; DataStream().build_active_learn_stream()"
-      - python -c "from frontpage.datastream import DataStream; DataStream().build_second_opinion_stream()"
-    sources:
-      - data/cleaned/*.jsonl
-      - training
-  
-  stats-out:
-    desc: Runs `prodigy stats`, which could indicate that there are new annotations.
-    cmds: 
-      - python -m prodigy stats -nf > /tmp/stats.jsonl
-    generates:
-      - tmp/stats.jsonl
-
-  prepare-annotations:
-    desc: Export the annotations from Prodigy so ML can be trained on it.
-    cmds:
-      - python -m frontpage annotprep
-    sources:
-      - /tmp/stats.jsonl
-    generates:
-      - data/annot/annotations.jsonl
   
   train:
     desc: Trains new classification heads on top of pretrained SBERT layer.
