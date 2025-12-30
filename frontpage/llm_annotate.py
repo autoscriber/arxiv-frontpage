@@ -26,7 +26,7 @@ def _to_cats(label: str, labels: List[str]) -> Dict[str, int]:
     return cats
 
 
-def run(model: str = "gemini-1.5-flash", level: str = "abstract", limit: int = 300):
+def run(model: str = "gemini-2.5-flash", level: str = "abstract", limit: int = 300):
     """Generate annotations with Gemini and save in ANNOT_FOLDER."""
     # Prefer environment values; if unset, default to project root creds and project id.
     if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
