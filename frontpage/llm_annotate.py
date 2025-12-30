@@ -3,19 +3,21 @@ from pathlib import Path
 from typing import Dict, List
 
 import srsly
-from google import genai
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 from .constants import CONFIG, LABELS, ANNOT_FOLDER
 from .datastream import DataStream
 from .utils import console
 
 
-def _choose_label(text: str, client: genai.Client, model: str, labels: List[str]) -> str:
+def _choose_label(text: str, model: GenerativeModel, labels: List[str]) -> str:
     prompt = (
         "You are labeling arXiv content with one label from this list: "
         f"{labels}. Return only the label.\n\nText:\n{text}"
     )
-    resp = client.models.generate_content(model=model, contents=prompt)
+    resp = model.generate_content(prompt)
+    # vertexai response provides .text convenience
     return (resp.text or "").strip()
 
 
@@ -45,7 +47,8 @@ def run(model: str = "gemini-2.5-flash", level: str = "abstract", limit: int = 3
     if not project:
         raise ValueError("Set GCP_PROJECT env or add project_id to config.")
 
-    client = genai.Client(vertexai=True, project=project, location=location)
+    vertexai.init(project=project, location=location)
+    gen_model = GenerativeModel(model)
     ds = DataStream()
     stream = ds.get_download_stream(level=level)
 
@@ -54,7 +57,7 @@ def run(model: str = "gemini-2.5-flash", level: str = "abstract", limit: int = 3
         text = ex.get("text") or ex.get("abstract") or " ".join(ex.get("sentences", []))
         if not text:
             continue
-        label = _choose_label(text, client=client, model=model, labels=LABELS)
+        label = _choose_label(text, model=gen_model, labels=LABELS)
         categories = _to_categories(label, LABELS)
         examples.append({"text": text, "categories": categories})
         if len(examples) >= limit:
