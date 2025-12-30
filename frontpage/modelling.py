@@ -13,6 +13,9 @@ from .utils import console
 
 msg = Printer()
 
+def _get_categories(ex: Dict) -> Dict:
+    return ex.get("categories") or ex.get("cats") or {}
+
 
 class SentenceModel:
     def __init__(self, labels=LABELS) -> None:
@@ -22,9 +25,9 @@ class SentenceModel:
     def train(self, examples):
         X = self.featurizer.transform([ex["text"] for ex in examples])
         for task, model in self._models.items():
-            xs = np.array([X[i] for i, ex in enumerate(examples) if task in ex['cats']])
+            xs = np.array([X[i] for i, ex in enumerate(examples) if task in _get_categories(ex)])
             ys = np.array(
-                [ex['cats'][task] for ex in examples if task in ex['cats']], dtype=int
+                [_get_categories(ex)[task] for ex in examples if task in _get_categories(ex)], dtype=int
             )
             model.fit(xs, ys)
             console.log(f"Trained the [bold]{task}[/bold] task, using {len(xs)} examples.")
@@ -71,8 +74,8 @@ class SentenceModel:
         console.log("Starting pretraining sequence.")
         all_pairs = []
         for label in LABELS:
-            subset = [ex for ex in examples if label in ex['cats']]
-            pairs = generate_pairs_batch([ex['cats'][label] for ex in subset], n_neg=1)
+            subset = [ex for ex in examples if label in _get_categories(ex)]
+            pairs = generate_pairs_batch([_get_categories(ex)[label] for ex in subset], n_neg=1)
             all_pairs.extend(pairs)
         
         input_examples = []

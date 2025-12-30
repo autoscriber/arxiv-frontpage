@@ -67,6 +67,9 @@ models = {
     "svm": SVC(class_weight="balanced")
 }
 
+def _get_categories(ex: Dict) -> Dict:
+    return ex.get("categories") or ex.get("cats") or {}
+
 def calc_stats(pred_valid, y_valid):
     return {**classification_report(pred_valid, y_valid, output_dict=True)['1'],  "accuracy": float(np.mean(pred_valid == y_valid))}
 
@@ -75,8 +78,8 @@ def run_benchmark_k_fold(label, model, encoder, tuner):
     res = {"label": label, "model": model, "encoder": encoder, "tuner": tuner, "method": "k_fold"}
     pipe = make_pipeline(encoders[encoder], tuners[tuner](), models[model])
     examples = datastream.get_train_stream()
-    X = [ex['text'] for ex in examples if label in ex['cats']]
-    y = [ex['cats'][label] for ex in examples if label in ex['cats']]
+    X = [ex['text'] for ex in examples if label in _get_categories(ex)]
+    y = [_get_categories(ex)[label] for ex in examples if label in _get_categories(ex)]
     folds = k_folder.split(X, y)
     for i, (train_idx, valid_idx) in enumerate(folds):
         X_train = [str(x) for x in np.array(X)[train_idx]]
@@ -94,8 +97,8 @@ def run_benchmark_train_size(label, model, encoder, tuner):
     res = {"label": label, "model": model, "encoder": encoder, "tuner": tuner, "method": "train_size"}
     pipe = make_pipeline(encoders[encoder], tuners[tuner](), models[model])
     examples = datastream.get_train_stream()
-    X = [ex['text'] for ex in examples if label in ex['cats']]
-    y = [ex['cats'][label] for ex in examples if label in ex['cats']]
+    X = [ex['text'] for ex in examples if label in _get_categories(ex)]
+    y = [_get_categories(ex)[label] for ex in examples if label in _get_categories(ex)]
     X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2)
     for p in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
         idx = int(len(X_train) * p)

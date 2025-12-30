@@ -75,11 +75,11 @@ class DataStream:
     def _accumulate_train_stream(self, stream) -> List[Dict]:
         """
         This function ensures that we have each `text` appear only
-        once and that the categories are nested in the `cats` key.
+        once and that the categories are nested in the `categories` key.
         """
         return (LazyLines(stream)
                 .nest_by("text")
-                .mutate(cats = lambda d: {k: v for ex in d['subset'] for k, v in ex.items()})
+                .mutate(categories=lambda d: {k: v for ex in d['subset'] for k, v in ex.items()})
                 .drop("subset")
                 .collect())
     
@@ -87,7 +87,10 @@ class DataStream:
         examples = []
         for label in LABELS:
             path = ANNOT_FOLDER / f"{label}.jsonl"
-            examples.extend(list(srsly.read_jsonl(path)))
+            for ex in srsly.read_jsonl(path):
+                if "categories" not in ex and "cats" in ex:
+                    ex["categories"] = ex["cats"]
+                examples.append(ex)
         return examples
 
     def get_lunr_stream(self, query: str, level: str):
@@ -200,6 +203,8 @@ class DataStream:
             for section in item['sections']:
                 editable = item.copy()
                 editable['html'] = render_html(editable, section)
+                if "categories" not in editable:
+                    editable["categories"] = {}
                 sections[section]['content'].append(editable)
 
         for section in sections.keys():

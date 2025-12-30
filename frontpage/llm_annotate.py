@@ -19,11 +19,11 @@ def _choose_label(text: str, client: genai.Client, model: str, labels: List[str]
     return (resp.text or "").strip()
 
 
-def _to_cats(label: str, labels: List[str]) -> Dict[str, int]:
-    cats = {lab: 0 for lab in labels}
-    if label in cats:
-        cats[label] = 1
-    return cats
+def _to_categories(label: str, labels: List[str]) -> Dict[str, int]:
+    categories = {lab: 0 for lab in labels}
+    if label in categories:
+        categories[label] = 1
+    return categories
 
 
 def run(model: str = "gemini-2.5-flash", level: str = "abstract", limit: int = 300):
@@ -55,14 +55,14 @@ def run(model: str = "gemini-2.5-flash", level: str = "abstract", limit: int = 3
         if not text:
             continue
         label = _choose_label(text, client=client, model=model, labels=LABELS)
-        cats = _to_cats(label, LABELS)
-        examples.append({"text": text, "cats": cats})
+        categories = _to_categories(label, LABELS)
+        examples.append({"text": text, "categories": categories})
         if len(examples) >= limit:
             break
 
     ANNOT_FOLDER.mkdir(parents=True, exist_ok=True)
     for label in LABELS:
-        subset = [ex for ex in examples if ex["cats"].get(label) == 1]
+        subset = [ex for ex in examples if ex["categories"].get(label) == 1]
         path = ANNOT_FOLDER / f"{label}.jsonl"
         srsly.write_jsonl(path, subset)
         console.log(f"Wrote {len(subset)} examples to {path}")

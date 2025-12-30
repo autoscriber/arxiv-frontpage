@@ -43,8 +43,8 @@
               </span>
               <div x-show="open" x-collapse.duration.500ms class="text-sm text-gray-500 pt-2">
                 <div class="text-center pt-2">
-                  {%- for key in content['cats'] -%}
-                  <span class='text-black px-2 mx-1 bg-blue-200 text-sm'>cls:{{key}}: 0.{{(content['cats'][key] * 1000) | int | round}}</span>
+                  {%- for key in content['categories'] -%}
+                  <span class='text-black px-2 mx-1 bg-blue-200 text-sm'>cls:{{key}}: 0.{{(content['categories'][key] * 1000) | int | round}}</span>
                   {%- endfor -%}
                 </div>
                 <p class="pt-2">
